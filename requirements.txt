@@ -1,4 +1,4 @@
-python==3.10.2
+python-3.10.2
 streamlit==1.10.0
 matplotlib==3.5.2
 DateTime==4.3
