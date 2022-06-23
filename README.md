@@ -1,1 +1,1 @@
-# weather-forecastin-app
+# weather-forecasting-app
