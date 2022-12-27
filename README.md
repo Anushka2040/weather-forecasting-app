@@ -1,4 +1,4 @@
 # Weather-forecasting-app
 
-You can checkout the app on this link:
-https://weather-forecasting-app-2040.herokuapp.com/
+* Created a single-page web application using Streamlit (a python framework) and matplotlib to display weather data visualizations.
+* Utilized PyOWM API for getting the weather predictions.
