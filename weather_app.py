@@ -4,18 +4,27 @@ import pyowm
 import streamlit as st
 import pandas as pd
 from matplotlib import dates
-from datetime import datetime
+import datetime
 from matplotlib import pyplot as plt
 from pyowm.utils import config
-from pyowm.utils import timestamps
+from pyowm.utils import timestamps,formatting
 from pyowm.owm import OWM
 import numpy as np
+import requests
+import json 
+import openmeteo_requests
+import requests_cache
+from retry_requests import retry
 
 # default API key
 # b043c52e3bd4c80792ae9b21b4b4eee1
 
-owm=OWM('b043c52e3bd4c80792ae9b21b4b4eee1')
+owm=OWM('b3546e071c51bd4fcdb291ca71a7756b')
 mgr=owm.weather_manager()
+
+cache_session = requests_cache.CachedSession('.cache', expire_after = -1)
+retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
+openmeteo = openmeteo_requests.Client(session = retry_session)
 
 with st.form("my_form"):
     st.title("5 Day Weather Forecast")
@@ -37,11 +46,8 @@ with st.form("my_form"):
     submitted = st.form_submit_button("Submit")
 
     if submitted:
-        owm=OWM('a10b96314bef87ecbccfaa69732ea6fc')
+        owm=OWM('b3546e071c51bd4fcdb291ca71a7756b')
         mgr=owm.weather_manager()
-
-        # place='Ontario'
-        # country='CA'
 
         reg = owm.city_id_registry()
         list_of_locations = reg.locations_for(place, country= country)
@@ -49,36 +55,50 @@ with st.form("my_form"):
         lat = location.lat
         lon = location.lon
 
-        one_call = mgr.one_call(lat, lon)
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": datetime.date.today()-datetime.timedelta(days=5),
+            "end_date": datetime.date.today(),
+            "daily": ["temperature_2m_max", "temperature_2m_min"]
+        }
+        responses = openmeteo.weather_api(url, params=params)
+        response = responses[0]
+        daily = response.Daily()
+        daily_temperature_2m_max = daily.Variables(0).ValuesAsNumpy()
+        daily_temperature_2m_min = daily.Variables(1).ValuesAsNumpy()
 
-        data=[]
-        temp_min = []
-        temp_max = []
-        date = []
-        days = []
+        daily_data = {"date": pd.date_range(
+            start = pd.to_datetime(daily.Time(), unit = "s", utc = True).date(),
+            end = pd.to_datetime(daily.TimeEnd(), unit = "s", utc = True).date(),
+            freq = pd.Timedelta(seconds = daily.Interval()),
+            inclusive = "left"
+        )}
+        daily_data["temperature_2m_max"] = daily_temperature_2m_max
+        daily_data["temperature_2m_min"] = daily_temperature_2m_min
 
-        for x in range (0,5):
-            One_call = one_call.forecast_daily[x].temperature('celsius')
-            data.append(One_call)
-            temp_min.append(data[x]['min'])
-            temp_max.append(data[x]['max'])
-            sunrise_date = one_call.forecast_daily[x].sunrise_time(timeformat='date')
-            date.append(datetime.date(sunrise_date))
-            days.append(data[x]['day'])
+        daily_dataframe = pd.DataFrame(data = daily_data)
+        plt.rcParams.update({'text.color': "white",
+                     'axes.labelcolor': "white"})
+        
 
-
-        if(g_type=="Line Graph"):
-            x = np.arange(len(date))
-            width = 0.35
+        if(g_type=="Bar Graph"):
+            x = np.arange(6)
+            width = 0.2
 
             fig, ax = plt.subplots()
-            rects1 = ax.bar(x - width/2, temp_max, width, label='Max')
-            rects2 = ax.bar(x + width/2, temp_min, width, label='Min')
+            rects1 = ax.bar(x - width/2, daily_dataframe['temperature_2m_max'], width, label='Max')
+            rects2 = ax.bar(x + width/2, daily_dataframe['temperature_2m_min'], width, label='Min')
 
+            # Background color
+            ax.set_facecolor('#35383D')
+            fig.set_facecolor('#35383D')
             ax.set_ylabel('Temperature')
             ax.set_xlabel('Date')
             ax.set_title('Min and Max temperature')
-            ax.set_xticks(x, date)
+            ax.set_xticks(x, daily_dataframe['date'].apply(lambda x: x.strftime('%Y-%m-%d')))
+            ax.tick_params(axis='both', colors='white')
             ax.legend()
 
             ax.bar_label(rects1, padding=3)
@@ -90,13 +110,15 @@ with st.form("my_form"):
 
         else:
             ##Line plot 
-
-            data_1 = temp_max
-            data_2 = temp_min
+            data_1 = daily_dataframe['temperature_2m_max']
+            data_2 = daily_dataframe['temperature_2m_min']
             fig1, ax1 = plt.subplots()  
 
-            ax1.plot(x,data_1)
-            ax1.plot(x,data_2)
+            # Background color
+            ax1.set_facecolor('grey')
+
+            ax1.plot(data_1,marker ='.')
+            ax1.plot(data_2,marker ='.')
             
             ax1.set_ylabel('Temperature')
             ax1.set_xlabel('Date')
